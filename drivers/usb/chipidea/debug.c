@@ -196,200 +196,6 @@ static ssize_t show_driver(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR(driver, S_IRUSR, show_driver, NULL);
 
-/* Maximum event message length */
-#define DBG_DATA_MSG   64UL
-
-/* Maximum event messages */
-#define DBG_DATA_MAX   128UL
-
-/* Event buffer descriptor */
-static struct {
-	char     (buf[DBG_DATA_MAX])[DBG_DATA_MSG];   /* buffer */
-	unsigned idx;   /* index */
-	unsigned tty;   /* print to console? */
-	rwlock_t lck;   /* lock */
-} dbg_data = {
-	.idx = 0,
-	.tty = 0,
-	.lck = __RW_LOCK_UNLOCKED(lck)
-};
-
-/**
- * dbg_dec: decrements debug event index
- * @idx: buffer index
- */
-static void dbg_dec(unsigned *idx)
-{
-	*idx = (*idx - 1) & (DBG_DATA_MAX-1);
-}
-
-/**
- * dbg_inc: increments debug event index
- * @idx: buffer index
- */
-static void dbg_inc(unsigned *idx)
-{
-	*idx = (*idx + 1) & (DBG_DATA_MAX-1);
-}
-
-/**
- * dbg_print:  prints the common part of the event
- * @addr:   endpoint address
- * @name:   event name
- * @status: status
- * @extra:  extra information
- */
-static void dbg_print(u8 addr, const char *name, int status, const char *extra)
-{
-	struct timeval tval;
-	unsigned int stamp;
-	unsigned long flags;
-
-	write_lock_irqsave(&dbg_data.lck, flags);
-
-	do_gettimeofday(&tval);
-	stamp = tval.tv_sec & 0xFFFF;	/* 2^32 = 4294967296. Limit to 4096s */
-	stamp = stamp * 1000000 + tval.tv_usec;
-
-	scnprintf(dbg_data.buf[dbg_data.idx], DBG_DATA_MSG,
-		  "%04X\t? %02X %-7.7s %4i ?\t%s\n",
-		  stamp, addr, name, status, extra);
-
-	dbg_inc(&dbg_data.idx);
-
-	write_unlock_irqrestore(&dbg_data.lck, flags);
-
-	if (dbg_data.tty != 0)
-		pr_notice("%04X\t? %02X %-7.7s %4i ?\t%s\n",
-			  stamp, addr, name, status, extra);
-}
-
-/**
- * dbg_done: prints a DONE event
- * @addr:   endpoint address
- * @td:     transfer descriptor
- * @status: status
- */
-void dbg_done(u8 addr, const u32 token, int status)
-{
-	char msg[DBG_DATA_MSG];
-
-	scnprintf(msg, sizeof(msg), "%d %02X",
-		  (int)(token & TD_TOTAL_BYTES) >> ffs_nr(TD_TOTAL_BYTES),
-		  (int)(token & TD_STATUS)      >> ffs_nr(TD_STATUS));
-	dbg_print(addr, "DONE", status, msg);
-}
-
-/**
- * dbg_event: prints a generic event
- * @addr:   endpoint address
- * @name:   event name
- * @status: status
- */
-void dbg_event(u8 addr, const char *name, int status)
-{
-	if (name != NULL)
-		dbg_print(addr, name, status, "");
-}
-
-/*
- * dbg_queue: prints a QUEUE event
- * @addr:   endpoint address
- * @req:    USB request
- * @status: status
- */
-void dbg_queue(u8 addr, const struct usb_request *req, int status)
-{
-	char msg[DBG_DATA_MSG];
-
-	if (req != NULL) {
-		scnprintf(msg, sizeof(msg),
-			  "%d %d", !req->no_interrupt, req->length);
-		dbg_print(addr, "QUEUE", status, msg);
-	}
-}
-
-/**
- * dbg_setup: prints a SETUP event
- * @addr: endpoint address
- * @req:  setup request
- */
-void dbg_setup(u8 addr, const struct usb_ctrlrequest *req)
-{
-	char msg[DBG_DATA_MSG];
-
-	if (req != NULL) {
-		scnprintf(msg, sizeof(msg),
-			  "%02X %02X %04X %04X %d", req->bRequestType,
-			  req->bRequest, le16_to_cpu(req->wValue),
-			  le16_to_cpu(req->wIndex), le16_to_cpu(req->wLength));
-		dbg_print(addr, "SETUP", 0, msg);
-	}
-}
-
-/**
- * show_events: displays the event buffer
- *
- * Check "device.h" for details
- */
-static ssize_t show_events(struct device *dev, struct device_attribute *attr,
-			   char *buf)
-{
-	unsigned long flags;
-	unsigned i, j, n = 0;
-
-	if (attr == NULL || buf == NULL) {
-		dev_err(dev->parent, "[%s] EINVAL\n", __func__);
-		return 0;
-	}
-
-	read_lock_irqsave(&dbg_data.lck, flags);
-
-	i = dbg_data.idx;
-	for (dbg_dec(&i); i != dbg_data.idx; dbg_dec(&i)) {
-		n += strlen(dbg_data.buf[i]);
-		if (n >= PAGE_SIZE) {
-			n -= strlen(dbg_data.buf[i]);
-			break;
-		}
-	}
-	for (j = 0, dbg_inc(&i); j < n; dbg_inc(&i))
-		j += scnprintf(buf + j, PAGE_SIZE - j,
-			       "%s", dbg_data.buf[i]);
-
-	read_unlock_irqrestore(&dbg_data.lck, flags);
-
-	return n;
-}
-
-/**
- * store_events: configure if events are going to be also printed to console
- *
- * Check "device.h" for details
- */
-static ssize_t store_events(struct device *dev, struct device_attribute *attr,
-			    const char *buf, size_t count)
-{
-	unsigned tty;
-
-	if (attr == NULL || buf == NULL) {
-		dev_err(dev, "[%s] EINVAL\n", __func__);
-		goto done;
-	}
-
-	if (sscanf(buf, "%u", &tty) != 1 || tty > 1) {
-		dev_err(dev, "<1|0>: enable|disable console log\n");
-		goto done;
-	}
-
-	dbg_data.tty = tty;
-	dev_info(dev, "tty = %u", dbg_data.tty);
-
- done:
-	return count;
-}
-static DEVICE_ATTR(events, S_IRUSR | S_IWUSR, show_events, store_events);
-
 /**
  * show_inters: interrupt status, enable status and historic
  *
@@ -730,12 +536,9 @@ int dbg_create_files(struct device *dev)
 	retval = device_create_file(dev, &dev_attr_driver);
 	if (retval)
 		goto rm_device;
-	retval = device_create_file(dev, &dev_attr_events);
-	if (retval)
-		goto rm_driver;
 	retval = device_create_file(dev, &dev_attr_inters);
 	if (retval)
-		goto rm_events;
+		goto rm_driver;
 	retval = device_create_file(dev, &dev_attr_port_test);
 	if (retval)
 		goto rm_inters;
@@ -758,8 +561,6 @@ int dbg_create_files(struct device *dev)
 	device_remove_file(dev, &dev_attr_port_test);
  rm_inters:
 	device_remove_file(dev, &dev_attr_inters);
- rm_events:
-	device_remove_file(dev, &dev_attr_events);
  rm_driver:
 	device_remove_file(dev, &dev_attr_driver);
  rm_device:
@@ -783,7 +584,6 @@ int dbg_remove_files(struct device *dev)
 	device_remove_file(dev, &dev_attr_qheads);
 	device_remove_file(dev, &dev_attr_port_test);
 	device_remove_file(dev, &dev_attr_inters);
-	device_remove_file(dev, &dev_attr_events);
 	device_remove_file(dev, &dev_attr_driver);
 	device_remove_file(dev, &dev_attr_device);
 	return 0;

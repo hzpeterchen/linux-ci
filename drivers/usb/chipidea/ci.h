@@ -23,6 +23,8 @@
  *****************************************************************************/
 #define CI13XXX_PAGE_SIZE  4096ul /* page size for TD's */
 #define ENDPT_MAX          32
+#define RX        0  /* similar to USB_DIR_OUT but can be used as an index */
+#define TX        1  /* similar to USB_DIR_IN  but can be used as an index */
 
 /******************************************************************************
  * STRUCTURES
@@ -58,6 +60,15 @@ struct ci13xxx_ep {
 	spinlock_t				*lock;
 	struct dma_pool				*td_pool;
 };
+
+/**
+ * ci_ep_addr: calculates endpoint address from direction & number
+ * @ep:  endpoint
+ */
+static inline u8 ci_ep_addr(struct ci13xxx_ep *ep)
+{
+	return ((ep->dir == TX) ? USB_ENDPOINT_DIR_MASK : 0) | ep->num;
+}
 
 enum ci_role {
 	CI_ROLE_HOST = 0,
@@ -312,5 +323,7 @@ int hw_device_reset(struct ci13xxx *ci, u32 mode);
 int hw_port_test_set(struct ci13xxx *ci, u8 mode);
 
 u8 hw_port_test_get(struct ci13xxx *ci);
+
+#include <trace/events/chipidea.h>
 
 #endif	/* __DRIVERS_USB_CHIPIDEA_CI_H */

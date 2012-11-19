@@ -65,6 +65,8 @@
 #include <linux/usb/otg.h>
 #include <linux/usb/chipidea.h>
 
+#define CREATE_TRACE_POINTS
+
 #include "ci.h"
 #include "udc.h"
 #include "bits.h"

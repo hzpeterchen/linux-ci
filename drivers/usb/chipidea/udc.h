@@ -16,8 +16,6 @@
 #include <linux/list.h>
 
 #define CTRL_PAYLOAD_MAX   64
-#define RX        0  /* similar to USB_DIR_OUT but can be used as an index */
-#define TX        1  /* similar to USB_DIR_IN  but can be used as an index */
 
 /* DMA layout of transfer descriptors */
 struct ci13xxx_td {
