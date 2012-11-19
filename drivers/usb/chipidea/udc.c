@@ -1626,14 +1626,16 @@ static irqreturn_t udc_irq(struct ci13xxx *ci)
 		}
 	}
 	intr = hw_test_and_clear_intr_active(ci);
-	dbg_interrupt(intr);
 
 	if (intr) {
 		/* order defines priority - do NOT change it */
-		if (USBi_URI & intr)
+		if (USBi_URI & intr) {
+			trace_ci_int_uri(ci);
 			isr_reset_handler(ci);
+		}
 
 		if (USBi_PCI & intr) {
+			trace_ci_int_pci(ci);
 			ci->gadget.speed = hw_port_is_high_speed(ci) ?
 				USB_SPEED_HIGH : USB_SPEED_FULL;
 			if (ci->suspended && ci->driver->resume) {
@@ -1644,10 +1646,13 @@ static irqreturn_t udc_irq(struct ci13xxx *ci)
 			}
 		}
 
-		if (USBi_UI  & intr)
+		if (USBi_UI  & intr) {
+			trace_ci_int_ui(ci);
 			isr_tr_complete_handler(ci);
+		}
 
 		if (USBi_SLI & intr) {
+			trace_ci_int_sli(ci);
 			if (ci->gadget.speed != USB_SPEED_UNKNOWN &&
 			    ci->driver->suspend) {
 				ci->suspended = 1;

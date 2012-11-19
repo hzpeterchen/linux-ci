@@ -8,7 +8,7 @@
 #include <linux/usb/gadget.h>
 #include <linux/usb/ch9.h>
 
-TRACE_EVENT(ci_bus_reset,
+DECLARE_EVENT_CLASS(ci_event,
 	TP_PROTO(struct ci13xxx *ci),
 
 	TP_ARGS(ci),
@@ -23,6 +23,22 @@ TRACE_EVENT(ci_bus_reset,
 
 	TP_printk("ci_hdrc.%d", __entry->id)
 );
+
+DEFINE_EVENT(ci_event, ci_bus_reset,
+	TP_PROTO(struct ci13xxx *ci),
+	TP_ARGS(ci));
+DEFINE_EVENT(ci_event, ci_int_uri,
+	TP_PROTO(struct ci13xxx *ci),
+	TP_ARGS(ci));
+DEFINE_EVENT(ci_event, ci_int_ui,
+	TP_PROTO(struct ci13xxx *ci),
+	TP_ARGS(ci));
+DEFINE_EVENT(ci_event, ci_int_pci,
+	TP_PROTO(struct ci13xxx *ci),
+	TP_ARGS(ci));
+DEFINE_EVENT(ci_event, ci_int_sli,
+	TP_PROTO(struct ci13xxx *ci),
+	TP_ARGS(ci));
 
 TRACE_EVENT(ci_ep_setup,
 	TP_PROTO(struct ci13xxx_ep *cep, struct usb_ctrlrequest *creq),

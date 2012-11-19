@@ -14,14 +14,9 @@
 #define __DRIVERS_USB_CHIPIDEA_DEBUG_H
 
 #ifdef CONFIG_USB_CHIPIDEA_DEBUG
-void dbg_interrupt(u32 intmask);
 int dbg_create_files(struct device *dev);
 int dbg_remove_files(struct device *dev);
 #else
-static inline void dbg_interrupt(u32 intmask)
-{
-}
-
 static inline int dbg_create_files(struct device *dev)
 {
 	return 0;

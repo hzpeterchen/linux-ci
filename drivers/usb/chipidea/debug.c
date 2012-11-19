@@ -10,46 +10,6 @@
 #include "bits.h"
 #include "debug.h"
 
-/* Interrupt statistics */
-#define ISR_MASK   0x1F
-static struct isr_statistics {
-	u32 test;
-	u32 ui;
-	u32 uei;
-	u32 pci;
-	u32 uri;
-	u32 sli;
-	u32 none;
-	struct {
-		u32 cnt;
-		u32 buf[ISR_MASK+1];
-		u32 idx;
-	} hndl;
-} isr_statistics;
-
-void dbg_interrupt(u32 intmask)
-{
-	if (!intmask) {
-		isr_statistics.none++;
-		return;
-	}
-
-	isr_statistics.hndl.buf[isr_statistics.hndl.idx++] = intmask;
-	isr_statistics.hndl.idx &= ISR_MASK;
-	isr_statistics.hndl.cnt++;
-
-	if (USBi_URI & intmask)
-		isr_statistics.uri++;
-	if (USBi_PCI & intmask)
-		isr_statistics.pci++;
-	if (USBi_UEI & intmask)
-		isr_statistics.uei++;
-	if (USBi_UI  & intmask)
-		isr_statistics.ui++;
-	if (USBi_SLI & intmask)
-		isr_statistics.sli++;
-}
-
 /**
  * hw_register_read: reads all device registers (execute without interruption)
  * @buf:  destination buffer
@@ -195,118 +155,6 @@ static ssize_t show_driver(struct device *dev, struct device_attribute *attr,
 	return n;
 }
 static DEVICE_ATTR(driver, S_IRUSR, show_driver, NULL);
-
-/**
- * show_inters: interrupt status, enable status and historic
- *
- * Check "device.h" for details
- */
-static ssize_t show_inters(struct device *dev, struct device_attribute *attr,
-			   char *buf)
-{
-	struct ci13xxx *ci = container_of(dev, struct ci13xxx, gadget.dev);
-	unsigned long flags;
-	u32 intr;
-	unsigned i, j, n = 0;
-
-	if (attr == NULL || buf == NULL) {
-		dev_err(ci->dev, "[%s] EINVAL\n", __func__);
-		return 0;
-	}
-
-	spin_lock_irqsave(&ci->lock, flags);
-
-	/*n += scnprintf(buf + n, PAGE_SIZE - n,
-		       "status = %08x\n", hw_read_intr_status(ci));
-	n += scnprintf(buf + n, PAGE_SIZE - n,
-	"enable = %08x\n", hw_read_intr_enable(ci));*/
-
-	n += scnprintf(buf + n, PAGE_SIZE - n, "*test = %d\n",
-		       isr_statistics.test);
-	n += scnprintf(buf + n, PAGE_SIZE - n, "? ui  = %d\n",
-		       isr_statistics.ui);
-	n += scnprintf(buf + n, PAGE_SIZE - n, "? uei = %d\n",
-		       isr_statistics.uei);
-	n += scnprintf(buf + n, PAGE_SIZE - n, "? pci = %d\n",
-		       isr_statistics.pci);
-	n += scnprintf(buf + n, PAGE_SIZE - n, "? uri = %d\n",
-		       isr_statistics.uri);
-	n += scnprintf(buf + n, PAGE_SIZE - n, "? sli = %d\n",
-		       isr_statistics.sli);
-	n += scnprintf(buf + n, PAGE_SIZE - n, "*none = %d\n",
-		       isr_statistics.none);
-	n += scnprintf(buf + n, PAGE_SIZE - n, "*hndl = %d\n",
-		       isr_statistics.hndl.cnt);
-
-	for (i = isr_statistics.hndl.idx, j = 0; j <= ISR_MASK; j++, i++) {
-		i   &= ISR_MASK;
-		intr = isr_statistics.hndl.buf[i];
-
-		if (USBi_UI  & intr)
-			n += scnprintf(buf + n, PAGE_SIZE - n, "ui  ");
-		intr &= ~USBi_UI;
-		if (USBi_UEI & intr)
-			n += scnprintf(buf + n, PAGE_SIZE - n, "uei ");
-		intr &= ~USBi_UEI;
-		if (USBi_PCI & intr)
-			n += scnprintf(buf + n, PAGE_SIZE - n, "pci ");
-		intr &= ~USBi_PCI;
-		if (USBi_URI & intr)
-			n += scnprintf(buf + n, PAGE_SIZE - n, "uri ");
-		intr &= ~USBi_URI;
-		if (USBi_SLI & intr)
-			n += scnprintf(buf + n, PAGE_SIZE - n, "sli ");
-		intr &= ~USBi_SLI;
-		if (intr)
-			n += scnprintf(buf + n, PAGE_SIZE - n, "??? ");
-		if (isr_statistics.hndl.buf[i])
-			n += scnprintf(buf + n, PAGE_SIZE - n, "\n");
-	}
-
-	spin_unlock_irqrestore(&ci->lock, flags);
-
-	return n;
-}
-
-/**
- * store_inters: enable & force or disable an individual interrutps
- *                   (to be used for test purposes only)
- *
- * Check "device.h" for details
- */
-static ssize_t store_inters(struct device *dev, struct device_attribute *attr,
-			    const char *buf, size_t count)
-{
-	struct ci13xxx *ci = container_of(dev, struct ci13xxx, gadget.dev);
-	unsigned long flags;
-	unsigned en, bit;
-
-	if (attr == NULL || buf == NULL) {
-		dev_err(ci->dev, "EINVAL\n");
-		goto done;
-	}
-
-	if (sscanf(buf, "%u %u", &en, &bit) != 2 || en > 1) {
-		dev_err(ci->dev, "<1|0> <bit>: enable|disable interrupt\n");
-		goto done;
-	}
-
-	spin_lock_irqsave(&ci->lock, flags);
-	if (en) {
-		if (hw_intr_force(ci, bit))
-			dev_err(dev, "invalid bit number\n");
-		else
-			isr_statistics.test++;
-	} else {
-		if (hw_intr_clear(ci, bit))
-			dev_err(dev, "invalid bit number\n");
-	}
-	spin_unlock_irqrestore(&ci->lock, flags);
-
- done:
-	return count;
-}
-static DEVICE_ATTR(inters, S_IRUSR | S_IWUSR, show_inters, store_inters);
 
 /**
  * show_port_test: reads port test mode
@@ -536,12 +384,9 @@ int dbg_create_files(struct device *dev)
 	retval = device_create_file(dev, &dev_attr_driver);
 	if (retval)
 		goto rm_device;
-	retval = device_create_file(dev, &dev_attr_inters);
-	if (retval)
-		goto rm_driver;
 	retval = device_create_file(dev, &dev_attr_port_test);
 	if (retval)
-		goto rm_inters;
+		goto rm_driver;
 	retval = device_create_file(dev, &dev_attr_qheads);
 	if (retval)
 		goto rm_port_test;
@@ -559,8 +404,6 @@ int dbg_create_files(struct device *dev)
 	device_remove_file(dev, &dev_attr_qheads);
  rm_port_test:
 	device_remove_file(dev, &dev_attr_port_test);
- rm_inters:
-	device_remove_file(dev, &dev_attr_inters);
  rm_driver:
 	device_remove_file(dev, &dev_attr_driver);
  rm_device:
@@ -583,7 +426,6 @@ int dbg_remove_files(struct device *dev)
 	device_remove_file(dev, &dev_attr_registers);
 	device_remove_file(dev, &dev_attr_qheads);
 	device_remove_file(dev, &dev_attr_port_test);
-	device_remove_file(dev, &dev_attr_inters);
 	device_remove_file(dev, &dev_attr_driver);
 	device_remove_file(dev, &dev_attr_device);
 	return 0;
