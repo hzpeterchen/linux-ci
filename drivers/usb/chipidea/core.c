@@ -459,8 +459,11 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 	if (ci->is_otg)
 		hw_write(ci, OP_OTGSC, OTGSC_IDIE, OTGSC_IDIE);
 
-	return ret;
+	ret = dbg_create_files(ci);
+	if (!ret)
+		return 0;
 
+	free_irq(ci->irq, ci);
 stop:
 	ci_role_stop(ci);
 rm_wq:
@@ -474,6 +477,7 @@ static int ci_hdrc_remove(struct platform_device *pdev)
 {
 	struct ci13xxx *ci = platform_get_drvdata(pdev);
 
+	dbg_remove_files(ci);
 	flush_workqueue(ci->wq);
 	destroy_workqueue(ci->wq);
 	free_irq(ci->irq, ci);
